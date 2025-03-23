@@ -1,227 +1,209 @@
 import UIKit
-import Vision
 
 class EyelashRenderer {
     
-    // Renders eyelashes on an image based on face landmarks
-    func renderEyelashes(on image: UIImage, with faceObservation: VNFaceObservation, using eyelashModel: EyelashModel, completion: @escaping (UIImage?) -> Void) {
-        // Create a face detection model
-        let faceModel = FaceDetectionModel(faceObservation: faceObservation, originalImage: image)
+    // Renders eyelashes on the provided image based on face detection model and eyelash model
+    func renderEyelashes(on image: UIImage, 
+                         faceDetection: FaceDetectionModel, 
+                         eyelashModel: EyelashModel) -> UIImage? {
         
-        // Create a new image context
-        UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
-        defer {
-            UIGraphicsEndImageContext()
+        // Check if we have the required eye data for rendering
+        guard faceDetection.hasEyesDetected else {
+            print("Cannot render eyelashes: Eye data not available")
+            return nil
         }
+        
+        // Begin image context to draw on
+        UIGraphicsBeginImageContextWithOptions(image.size, false, image.scale)
+        defer { UIGraphicsEndImageContext() }
         
         // Draw the original image
         image.draw(at: .zero)
         
-        // Get the current graphics context
+        // Get the current context to draw on
         guard let context = UIGraphicsGetCurrentContext() else {
-            completion(nil)
-            return
+            return nil
         }
         
-        // Draw eyelashes on both eyes
-        drawEyelashes(
-            for: .left,
-            on: context,
-            with: faceModel,
-            using: eyelashModel
-        )
+        // Render eyelashes for each eye
+        renderEyelashesForEye(.left, context: context, faceDetection: faceDetection, eyelashModel: eyelashModel, imageSize: image.size)
+        renderEyelashesForEye(.right, context: context, faceDetection: faceDetection, eyelashModel: eyelashModel, imageSize: image.size)
         
-        drawEyelashes(
-            for: .right,
-            on: context,
-            with: faceModel,
-            using: eyelashModel
-        )
-        
-        // Get the resulting image
-        guard let renderedImage = UIGraphicsGetImageFromCurrentImageContext() else {
-            completion(nil)
-            return
+        // Get the resulting image with eyelashes
+        guard let resultImage = UIGraphicsGetImageFromCurrentImageContext() else {
+            return nil
         }
         
-        // Return the image with eyelashes applied
-        completion(renderedImage)
+        return resultImage
     }
     
-    private enum EyeSide {
-        case left
-        case right
+    // Render eyelashes for a specific eye
+    private func renderEyelashesForEye(_ eyePosition: EyePosition, 
+                                      context: CGContext, 
+                                      faceDetection: FaceDetectionModel, 
+                                      eyelashModel: EyelashModel, 
+                                      imageSize: CGSize) {
+        
+        // Get the eyelash positions for this eye
+        let lashPositions = faceDetection.getEyelashPositions(for: eyePosition, withSize: imageSize)
+        
+        // Exit if no positions are available
+        guard !lashPositions.isEmpty else { return }
+        
+        // Save the context state before modifications
+        context.saveGState()
+        
+        // Set the drawing properties based on eyelash model
+        configureDrawingProperties(for: context, eyelashModel: eyelashModel)
+        
+        // Draw each eyelash
+        for (index, position) in lashPositions.enumerated() {
+            drawSingleEyelash(at: position, 
+                             index: index, 
+                             totalLashes: lashPositions.count, 
+                             context: context, 
+                             eyelashModel: eyelashModel, 
+                             eyePosition: eyePosition)
+        }
+        
+        // Restore the context state
+        context.restoreGState()
     }
     
-    private func drawEyelashes(for side: EyeSide, on context: CGContext, with faceModel: FaceDetectionModel, using eyelashModel: EyelashModel) {
-        // Get the eye points
-        let eyePoints: [CGPoint]?
-        let eyebrowPoints: [CGPoint]?
+    // Configure the drawing context based on eyelash properties
+    private func configureDrawingProperties(for context: CGContext, eyelashModel: EyelashModel) {
+        // Set color - black by default, but can be customized
+        context.setStrokeColor(UIColor.black.cgColor)
         
-        switch side {
-        case .left:
-            eyePoints = faceModel.getLeftEyePoints()
-            eyebrowPoints = faceModel.leftEyebrowLandmarks?.normalizedPoints.map { point in
-                CGPoint(
-                    x: point.x * faceModel.originalImage.size.width,
-                    y: (1 - point.y) * faceModel.originalImage.size.height
-                )
-            }
-        case .right:
-            eyePoints = faceModel.getRightEyePoints()
-            eyebrowPoints = faceModel.rightEyebrowLandmarks?.normalizedPoints.map { point in
-                CGPoint(
-                    x: point.x * faceModel.originalImage.size.width,
-                    y: (1 - point.y) * faceModel.originalImage.size.height
-                )
-            }
-        }
+        // Set line width based on eyelash thickness
+        let thickness = eyelashModel.thickness.minThickness + 
+                       (eyelashModel.thickness.maxThickness - eyelashModel.thickness.minThickness) / 2
+        context.setLineWidth(CGFloat(thickness * 2)) // Scale for visibility
         
-        guard let points = eyePoints, !points.isEmpty else {
-            return
-        }
-        
-        // Get the top points of the eye (where eyelashes would be attached)
-        let topPoints = getTopEyelidPoints(from: points)
-        
-        // Get the eye center
-        let eyeCenter: CGPoint?
-        switch side {
-        case .left:
-            eyeCenter = faceModel.getLeftEyeCenter()
-        case .right:
-            eyeCenter = faceModel.getRightEyeCenter()
-        }
-        
-        guard let center = eyeCenter else {
-            return
-        }
-        
-        // Calculate the average eye width to scale the eyelashes
-        let eyeWidth = faceModel.getAverageEyeWidth() ?? 50.0
-        
-        // Set drawing properties based on the eyelash model
-        let eyelashColor = UIColor.black
-        let eyelashWidth = CGFloat(eyelashModel.thickness) * 2
-        
-        context.setStrokeColor(eyelashColor.cgColor)
-        context.setLineWidth(eyelashWidth)
+        // Set line cap for nicer endings
         context.setLineCap(.round)
-        
-        // Draw eyelashes using the model properties
-        let eyebrowDistance = calculateEyebrowDistance(eyePoints: topPoints, eyebrowPoints: eyebrowPoints)
-        let baseLength = CGFloat(eyelashModel.length) * eyeWidth / 20.0
-        
-        for i in 0..<topPoints.count {
-            // Skip some points for a more natural look
-            if i % 2 != 0 {
-                continue
-            }
-            
-            let point = topPoints[i]
-            
-            // Calculate direction vector from eye center to eyelid point
-            var dirX = point.x - center.x
-            var dirY = point.y - center.y
-            
-            // Normalize the direction vector
-            let length = sqrt(dirX * dirX + dirY * dirY)
-            if length > 0 {
-                dirX /= length
-                dirY /= length
-            }
-            
-            // Calculate length based on position (longer in the middle for some styles)
-            var lashLength = baseLength
-            
-            // Adjust based on style
-            switch eyelashModel.style {
-            case .natural:
-                // Natural style has fairly uniform length
-                lashLength *= 0.8 + 0.4 * sin(CGFloat(i) / CGFloat(topPoints.count) * .pi)
-                
-            case .volume:
-                // Volume style has slightly longer lashes in the middle
-                lashLength *= 0.7 + 0.6 * sin(CGFloat(i) / CGFloat(topPoints.count) * .pi)
-                
-            case .dramatic:
-                // Dramatic style has much longer lashes in the middle
-                lashLength *= 0.6 + 0.8 * sin(CGFloat(i) / CGFloat(topPoints.count) * .pi)
-                
-            case .catEye:
-                // Cat eye style has longer lashes on the outer edge
-                let normalizedPos = CGFloat(i) / CGFloat(topPoints.count)
-                let factor = side == .left ? normalizedPos : (1 - normalizedPos)
-                lashLength *= 0.7 + 0.7 * factor
-                
-            case .dolly:
-                // Dolly style has longer lashes in the middle for a rounded look
-                lashLength *= 0.6 + 0.8 * sin(CGFloat(i) / CGFloat(topPoints.count) * .pi)
-                
-            case .squirrel:
-                // Squirrel style has crossed lashes
-                lashLength *= 0.7 + 0.5 * sin(CGFloat(i) / CGFloat(topPoints.count) * 2 * .pi)
-            }
-            
-            // Apply curl based on the model
-            var curlFactor: CGFloat = 0
-            switch eyelashModel.curve {
-            case .jCurl:
-                curlFactor = 0.1
-            case .bCurl:
-                curlFactor = 0.2
-            case .cCurl:
-                curlFactor = 0.4
-            case .dCurl:
-                curlFactor = 0.6
-            case .lCurl:
-                curlFactor = 0.8
-            case .uCurl:
-                curlFactor = 1.0
-            }
-            
-            // Calculate the end point with curl
-            let endX = point.x + dirX * lashLength
-            let endY = point.y + dirY * lashLength
-            
-            // Calculate control point for the curve (to create the curl)
-            let controlX = point.x + dirX * lashLength * 0.7 + dirY * lashLength * curlFactor * (side == .left ? -0.3 : 0.3)
-            let controlY = point.y + dirY * lashLength * 0.7 - dirX * lashLength * curlFactor * (side == .left ? -0.3 : 0.3)
-            
-            // Draw the eyelash as a curved line
-            context.beginPath()
-            context.move(to: point)
-            context.addQuadCurve(to: CGPoint(x: endX, y: endY), control: CGPoint(x: controlX, y: controlY))
-            context.strokePath()
-        }
     }
     
-    // Get the top points of the eyelid
-    private func getTopEyelidPoints(from eyePoints: [CGPoint]) -> [CGPoint] {
-        // Sort points by y coordinate (top to bottom)
-        let sortedPoints = eyePoints.sorted { $0.y < $1.y }
+    // Draw a single eyelash at the specified position
+    private func drawSingleEyelash(at position: CGPoint, 
+                                  index: Int, 
+                                  totalLashes: Int, 
+                                  context: CGContext, 
+                                  eyelashModel: EyelashModel, 
+                                  eyePosition: EyePosition) {
         
-        // Take the top half of points
-        let topHalfCount = max(eyePoints.count / 2, 5)
-        let topPoints = Array(sortedPoints.prefix(topHalfCount))
+        // Calculate normalized position (0 to 1) from left to right
+        let normalizedPosition = CGFloat(index) / CGFloat(totalLashes - 1)
         
-        // Sort these points by x coordinate (left to right)
-        return topPoints.sorted { $0.x < $1.x }
-    }
-    
-    // Calculate distance between eyebrow and eye
-    private func calculateEyebrowDistance(eyePoints: [CGPoint], eyebrowPoints: [CGPoint]?) -> CGFloat {
-        guard let eyebrowPoints = eyebrowPoints, !eyebrowPoints.isEmpty else {
-            return 20.0  // Default value if eyebrow not detected
+        // Determine lash length based on eyelash model and position
+        let length = calculateLashLength(normalizedPosition: normalizedPosition, 
+                                         eyelashModel: eyelashModel, 
+                                         eyePosition: eyePosition)
+        
+        // Determine lash angle and curvature
+        let angle = calculateLashAngle(normalizedPosition: normalizedPosition, 
+                                       eyePosition: eyePosition)
+        let curlFactor = eyelashModel.curl.curlFactor
+        
+        // Start drawing path
+        context.beginPath()
+        context.move(to: position)
+        
+        // Calculate end point for a straight lash
+        var endX = position.x + sin(angle) * length
+        var endY = position.y - cos(angle) * length
+        
+        // For curved lashes, we'll use a quadratic curve
+        if curlFactor > 0.1 {
+            // Draw a curved lash
+            let controlPointDistance = length * CGFloat(curlFactor)
+            let controlX = position.x + sin(angle + .pi / 8) * controlPointDistance * 0.7
+            let controlY = position.y - cos(angle + .pi / 8) * controlPointDistance * 0.7
+            
+            context.addQuadCurve(to: CGPoint(x: endX, y: endY), 
+                               control: CGPoint(x: controlX, y: controlY))
+        } else {
+            // Draw a straight lash
+            context.addLine(to: CGPoint(x: endX, y: endY))
         }
         
-        // Get the average y-coordinate of the top eyelid
-        let avgEyeY = eyePoints.reduce(0) { $0 + $1.y } / CGFloat(eyePoints.count)
+        // Stroke the path
+        context.strokePath()
+    }
+    
+    // Calculate the length of an eyelash based on position and model
+    private func calculateLashLength(normalizedPosition: CGFloat, 
+                                    eyelashModel: EyelashModel, 
+                                    eyePosition: EyePosition) -> CGFloat {
         
-        // Get the average y-coordinate of the eyebrow
-        let avgEyebrowY = eyebrowPoints.reduce(0) { $0 + $1.y } / CGFloat(eyebrowPoints.count)
+        // Get base length from eyelash model
+        let minLength = CGFloat(eyelashModel.length.minLength)
+        let maxLength = CGFloat(eyelashModel.length.maxLength)
+        var length: CGFloat = 0
         
-        // Return the vertical distance
-        return max(avgEyeY - avgEyebrowY, 10.0)
+        // Check if there's a specific pattern type
+        if let patternType = eyelashModel.customParameters?["patternType"] as? String {
+            switch patternType {
+            case "catEye":
+                // Cat eye: shorter in middle, longer at edges (especially outer)
+                if eyePosition == .left {
+                    // Left eye: longer on right side
+                    length = minLength + (maxLength - minLength) * normalizedPosition * 1.2
+                } else {
+                    // Right eye: longer on left side
+                    length = minLength + (maxLength - minLength) * (1 - normalizedPosition) * 1.2
+                }
+                
+            case "dollEye":
+                // Doll eye: longer in middle, shorter at edges
+                let middleFactor = 1 - abs(normalizedPosition - 0.5) * 2
+                length = minLength + (maxLength - minLength) * middleFactor
+                
+            case "wispy":
+                // Wispy: varied lengths in a somewhat random but pleasing pattern
+                let oscillation = sin(normalizedPosition * .pi * 4)
+                let randomFactor = CGFloat(0.3 + (abs(oscillation) * 0.7))
+                length = minLength + (maxLength - minLength) * randomFactor
+                
+            default:
+                // Default uniform length
+                length = minLength + (maxLength - minLength) * 0.5
+            }
+        } else if eyelashModel.length == .mixed {
+            // Mixed lengths - create a pattern when specific pattern not specified
+            let oscillation = sin(normalizedPosition * .pi * 2)
+            length = minLength + (maxLength - minLength) * (0.4 + abs(oscillation) * 0.6)
+        } else {
+            // Use average length from model
+            length = minLength + (maxLength - minLength) * 0.5
+        }
+        
+        return length
+    }
+    
+    // Calculate the angle for an eyelash based on position
+    private func calculateLashAngle(normalizedPosition: CGFloat, eyePosition: EyePosition) -> CGFloat {
+        // Base angle pointing upward
+        let baseAngle: CGFloat = -.pi / 2 // -90 degrees (straight up)
+        
+        // Adjust angle based on position (fan out from center)
+        let positionFactor = normalizedPosition - 0.5 // -0.5 to 0.5
+        
+        // Apply more angle variation at the edges
+        var angleVariation = positionFactor * .pi / 3 // Max ±60 degree variation
+        
+        // For more natural look, angle more outward at outer corners
+        if (eyePosition == .left && normalizedPosition < 0.3) || 
+           (eyePosition == .right && normalizedPosition > 0.7) {
+            // Strengthen outward angle at outer corners
+            angleVariation *= 1.5
+        }
+        
+        // Apply opposite angle adjustments for left vs right eye
+        if eyePosition == .right {
+            angleVariation *= -1
+        }
+        
+        return baseAngle + angleVariation
     }
 }

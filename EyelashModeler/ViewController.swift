@@ -1,250 +1,210 @@
 import UIKit
-import Vision
-import ARKit
 
 class ViewController: UIViewController {
     
-    // Navigation controller to manage the app flow
-    private var navController: UINavigationController?
+    private var cameraView: CameraView?
+    private var eyelashLibraryView: EyelashLibraryView?
+    private var editorView: EditorView?
+    private var previewView: EyelashPreviewView?
     
-    // Current image being edited
-    private var currentImage: UIImage?
-    
-    // Current detected face landmarks
-    private var faceLandmarks: VNFaceObservation?
-    
-    // FaceDetector utility to detect facial landmarks
+    private var currentSelectedEyelash: EyelashModel?
+    private var imagePicker = ImagePicker()
     private let faceDetector = FaceDetector()
-    
-    // EyelashRenderer to apply eyelash models onto images
     private let eyelashRenderer = EyelashRenderer()
     
-    // View for the camera and photo selection
-    private let cameraView = CameraView()
-    
-    // View for the eyelash library
-    private let libraryView = EyelashLibraryView()
-    
-    // View for editing the eyelashes on the image
-    private let editorView = EditorView()
-    
-    // Current selected eyelash model
-    private var selectedEyelashModel: EyelashModel?
+    // UI Elements
+    private let cameraButton = UIButton()
+    private let libraryButton = UIButton()
+    private let previewButton = UIButton()
+    private let editButton = UIButton()
     
     override func viewDidLoad() {
         super.viewDidLoad()
         
         setupUI()
-        setupDelegates()
+        setupCameraView()
+        setupLibraryView()
+        setupEditorView()
+        setupPreviewView()
+        
+        // Initially show camera view
+        showCameraView()
     }
     
     private func setupUI() {
-        // Set up the navigation bar
         title = "Eyelash Modeler"
+        view.backgroundColor = .white
         
-        // Add the camera view as a child view controller
-        addChild(cameraView)
-        view.addSubview(cameraView.view)
-        cameraView.view.frame = view.bounds
-        cameraView.didMove(toParent: self)
-        
-        // Navigation buttons for moving between views
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Library", 
-            style: .plain, 
-            target: self, 
-            action: #selector(showLibrary)
-        )
-        
-        navigationItem.leftBarButtonItem = UIBarButtonItem(
-            title: "Back", 
-            style: .plain, 
-            target: self, 
-            action: #selector(goBack)
-        )
-        navigationItem.leftBarButtonItem?.isEnabled = false
+        // Setup UI elements like buttons, navigation, etc.
+        setupButtons()
     }
     
-    private func setupDelegates() {
-        // Set up delegate for camera view to handle image selection
-        cameraView.delegate = self
+    private func setupButtons() {
+        let buttonStack = UIStackView()
+        buttonStack.axis = .horizontal
+        buttonStack.distribution = .fillEqually
+        buttonStack.spacing = 10
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
         
-        // Set up delegate for library view to handle eyelash selection
-        libraryView.delegate = self
+        // Configure buttons
+        configureButton(cameraButton, title: "Camera", action: #selector(showCameraView))
+        configureButton(libraryButton, title: "Styles", action: #selector(showLibraryView))
+        configureButton(editButton, title: "Edit", action: #selector(showEditorView))
+        configureButton(previewButton, title: "Preview", action: #selector(showPreviewView))
         
-        // Set up delegate for editor view to handle editing completion
-        editorView.delegate = self
+        // Add buttons to stack
+        buttonStack.addArrangedSubview(cameraButton)
+        buttonStack.addArrangedSubview(libraryButton)
+        buttonStack.addArrangedSubview(editButton)
+        buttonStack.addArrangedSubview(previewButton)
+        
+        // Add stack to view
+        view.addSubview(buttonStack)
+        
+        // Set constraints
+        NSLayoutConstraint.activate([
+            buttonStack.leadingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 20),
+            buttonStack.trailingAnchor.constraint(equalTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -20),
+            buttonStack.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
+            buttonStack.heightAnchor.constraint(equalToConstant: 50)
+        ])
     }
     
-    @objc private func showLibrary() {
-        guard currentImage != nil else {
-            showAlert(message: "Please take or select a photo first")
-            return
-        }
-        
-        // Remove current child view controller
-        if let childVC = children.first {
-            childVC.willMove(toParent: nil)
-            childVC.view.removeFromSuperview()
-            childVC.removeFromParent()
-        }
-        
-        // Add the library view
-        addChild(libraryView)
-        view.addSubview(libraryView.view)
-        libraryView.view.frame = view.bounds
-        libraryView.didMove(toParent: self)
-        
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Apply", 
-            style: .plain, 
-            target: self, 
-            action: #selector(applySelectedEyelash)
-        )
-        navigationItem.leftBarButtonItem?.isEnabled = true
+    private func configureButton(_ button: UIButton, title: String, action: Selector) {
+        button.setTitle(title, for: .normal)
+        button.setTitleColor(.white, for: .normal)
+        button.backgroundColor = .systemBlue
+        button.layer.cornerRadius = 10
+        button.addTarget(self, action: action, for: .touchUpInside)
     }
     
-    @objc private func applySelectedEyelash() {
-        guard let eyelashModel = selectedEyelashModel, let image = currentImage, let faceLandmarks = faceLandmarks else {
-            showAlert(message: "Please select a photo and eyelash style first")
-            return
-        }
+    private func setupCameraView() {
+        cameraView = CameraView(frame: getContentFrame())
+        cameraView?.translatesAutoresizingMaskIntoConstraints = false
         
-        // Remove current child view controller
-        if let childVC = children.first {
-            childVC.willMove(toParent: nil)
-            childVC.view.removeFromSuperview()
-            childVC.removeFromParent()
-        }
-        
-        // Add the editor view
-        addChild(editorView)
-        view.addSubview(editorView.view)
-        editorView.view.frame = view.bounds
-        editorView.didMove(toParent: self)
-        
-        // Apply the eyelash model to the image
-        eyelashRenderer.renderEyelashes(on: image, with: faceLandmarks, using: eyelashModel) { [weak self] renderedImage in
-            guard let self = self, let renderedImage = renderedImage else {
-                self?.showAlert(message: "Failed to apply eyelashes. Please try again.")
-                return
-            }
+        if let cameraView = cameraView {
+            view.addSubview(cameraView)
+            cameraView.isHidden = true
             
-            // Display the rendered image in the editor view
-            self.editorView.setImage(renderedImage, with: eyelashModel)
-        }
-        
-        navigationItem.rightBarButtonItem = UIBarButtonItem(
-            title: "Save", 
-            style: .plain, 
-            target: self, 
-            action: #selector(saveImage)
-        )
-    }
-    
-    @objc private func goBack() {
-        // Remove current child view controller
-        if let childVC = children.first {
-            childVC.willMove(toParent: nil)
-            childVC.view.removeFromSuperview()
-            childVC.removeFromParent()
-        }
-        
-        // If we're in the editor, go back to the library
-        if children.first is EditorView {
-            addChild(libraryView)
-            view.addSubview(libraryView.view)
-            libraryView.view.frame = view.bounds
-            libraryView.didMove(toParent: self)
-            
-            navigationItem.rightBarButtonItem = UIBarButtonItem(
-                title: "Apply", 
-                style: .plain, 
-                target: self, 
-                action: #selector(applySelectedEyelash)
-            )
-        } else {
-            // Otherwise go back to the camera view
-            addChild(cameraView)
-            view.addSubview(cameraView.view)
-            cameraView.view.frame = view.bounds
-            cameraView.didMove(toParent: self)
-            
-            navigationItem.rightBarButtonItem = UIBarButtonItem(
-                title: "Library", 
-                style: .plain, 
-                target: self, 
-                action: #selector(showLibrary)
-            )
-            navigationItem.leftBarButtonItem?.isEnabled = false
-        }
-    }
-    
-    @objc private func saveImage() {
-        guard let finalImage = editorView.getFinalImage() else {
-            showAlert(message: "Failed to save the image. Please try again.")
-            return
-        }
-        
-        // Save the image to the photo library
-        UIImageWriteToSavedPhotosAlbum(finalImage, self, #selector(image(_:didFinishSavingWithError:contextInfo:)), nil)
-    }
-    
-    @objc private func image(_ image: UIImage, didFinishSavingWithError error: Error?, contextInfo: UnsafeRawPointer) {
-        if let error = error {
-            showAlert(message: "Failed to save: \(error.localizedDescription)")
-        } else {
-            showAlert(message: "Image saved successfully!")
-        }
-    }
-    
-    private func showAlert(message: String) {
-        let alert = UIAlertController(
-            title: "Eyelash Modeler", 
-            message: message, 
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, animated: true)
-    }
-    
-    private func processImage(_ image: UIImage) {
-        // Detect faces in the image
-        faceDetector.detectFace(in: image) { [weak self] result in
-            switch result {
-            case .success(let observation):
-                self?.faceLandmarks = observation
-                self?.currentImage = image
-                self?.showLibrary()
-            case .failure(let error):
-                self?.showAlert(message: "Face detection failed: \(error.localizedDescription)")
+            // Set camera view callbacks
+            cameraView.onImageCaptured = { [weak self] image in
+                // Process the captured image for face detection
+                self?.processImageForFaceDetection(image)
             }
         }
     }
-}
-
-// MARK: - CameraViewDelegate
-extension ViewController: CameraViewDelegate {
-    func cameraView(_ view: CameraView, didCaptureImage image: UIImage) {
-        processImage(image)
+    
+    private func setupLibraryView() {
+        eyelashLibraryView = EyelashLibraryView(frame: getContentFrame())
+        eyelashLibraryView?.translatesAutoresizingMaskIntoConstraints = false
+        
+        if let libraryView = eyelashLibraryView {
+            view.addSubview(libraryView)
+            libraryView.isHidden = true
+            
+            // Set library view callbacks
+            libraryView.onEyelashSelected = { [weak self] eyelashModel in
+                self?.currentSelectedEyelash = eyelashModel
+                self?.showPreviewView()
+            }
+        }
     }
     
-    func cameraView(_ view: CameraView, didSelectImage image: UIImage) {
-        processImage(image)
+    private func setupEditorView() {
+        editorView = EditorView(frame: getContentFrame())
+        editorView?.translatesAutoresizingMaskIntoConstraints = false
+        
+        if let editorView = editorView {
+            view.addSubview(editorView)
+            editorView.isHidden = true
+            
+            // Set editor view callbacks
+            editorView.onEditingComplete = { [weak self] eyelashModel in
+                self?.currentSelectedEyelash = eyelashModel
+                self?.showPreviewView()
+            }
+        }
     }
-}
-
-// MARK: - EyelashLibraryViewDelegate
-extension ViewController: EyelashLibraryViewDelegate {
-    func libraryView(_ view: EyelashLibraryView, didSelectEyelash eyelashModel: EyelashModel) {
-        selectedEyelashModel = eyelashModel
+    
+    private func setupPreviewView() {
+        previewView = EyelashPreviewView(frame: getContentFrame())
+        previewView?.translatesAutoresizingMaskIntoConstraints = false
+        
+        if let previewView = previewView {
+            view.addSubview(previewView)
+            previewView.isHidden = true
+        }
     }
-}
-
-// MARK: - EditorViewDelegate
-extension ViewController: EditorViewDelegate {
-    func editorView(_ view: EditorView, didFinishEditing image: UIImage) {
-        // This method will be called when the user finishes editing
-        // We could add additional behavior here if needed
+    
+    private func getContentFrame() -> CGRect {
+        return CGRect(x: 0, y: 0, width: view.bounds.width, height: view.bounds.height - 80)
+    }
+    
+    @objc private func showCameraView() {
+        hideAllViews()
+        cameraView?.isHidden = false
+        cameraButton.backgroundColor = .systemGreen
+    }
+    
+    @objc private func showLibraryView() {
+        hideAllViews()
+        eyelashLibraryView?.isHidden = false
+        libraryButton.backgroundColor = .systemGreen
+    }
+    
+    @objc private func showEditorView() {
+        hideAllViews()
+        editorView?.isHidden = false
+        editButton.backgroundColor = .systemGreen
+        
+        // Update the editor with the current eyelash model if available
+        if let eyelashModel = currentSelectedEyelash {
+            editorView?.setupWithEyelashModel(eyelashModel)
+        }
+    }
+    
+    @objc private func showPreviewView() {
+        hideAllViews()
+        previewView?.isHidden = false
+        previewButton.backgroundColor = .systemGreen
+        
+        // Update the preview with the current eyelash model and latest face data
+        if let eyelashModel = currentSelectedEyelash {
+            previewView?.setupWithEyelashModel(eyelashModel)
+        }
+    }
+    
+    private func hideAllViews() {
+        cameraView?.isHidden = true
+        eyelashLibraryView?.isHidden = true
+        editorView?.isHidden = true
+        previewView?.isHidden = true
+        
+        // Reset button colors
+        cameraButton.backgroundColor = .systemBlue
+        libraryButton.backgroundColor = .systemBlue
+        editButton.backgroundColor = .systemBlue
+        previewButton.backgroundColor = .systemBlue
+    }
+    
+    private func processImageForFaceDetection(_ image: UIImage) {
+        faceDetector.detectFace(in: image) { [weak self] faceDetectionModel in
+            if let model = faceDetectionModel {
+                // Face detected, update the UI
+                DispatchQueue.main.async {
+                    self?.previewView?.updateWithFaceDetection(model, image: image)
+                    self?.showPreviewView()
+                }
+            } else {
+                // No face detected, show an alert
+                DispatchQueue.main.async {
+                    let alert = UIAlertController(title: "No Face Detected", 
+                                                message: "Please take another photo with a clear view of the face.", 
+                                                preferredStyle: .alert)
+                    alert.addAction(UIAlertAction(title: "OK", style: .default))
+                    self?.present(alert, animated: true)
+                }
+            }
+        }
     }
 }

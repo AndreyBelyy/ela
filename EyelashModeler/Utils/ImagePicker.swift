@@ -1,78 +1,158 @@
 import UIKit
-
-protocol ImagePickerDelegate: AnyObject {
-    func imagePicker(_ picker: ImagePicker, didSelectImage image: UIImage)
-}
+import Photos
 
 class ImagePicker: NSObject {
     
-    weak var delegate: ImagePickerDelegate?
-    private var pickerController: UIImagePickerController
+    // Callback typealias for image selection and cancellation
+    typealias ImagePickerCompletion = (UIImage?) -> Void
+    
+    // Image picker controller
+    private let pickerController = UIImagePickerController()
+    
+    // Reference to presenting view controller
     private weak var presentationController: UIViewController?
     
+    // Completion handler to call when image is selected or picker is cancelled
+    private var completion: ImagePickerCompletion?
+    
     override init() {
-        self.pickerController = UIImagePickerController()
         super.init()
         
-        self.pickerController.delegate = self
-        self.pickerController.allowsEditing = true
-        self.pickerController.mediaTypes = ["public.image"]
+        // Configure image picker
+        pickerController.delegate = self
+        pickerController.allowsEditing = true
+        pickerController.mediaTypes = ["public.image"]
     }
     
-    func present(from viewController: UIViewController) {
+    // Present the image picker from a view controller
+    func present(from viewController: UIViewController, sourceType: UIImagePickerController.SourceType = .camera, completion: @escaping ImagePickerCompletion) {
+        // Store references for later use
         self.presentationController = viewController
+        self.completion = completion
         
-        let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
-        
-        if let action = self.action(for: .camera, title: "Take photo") {
-            alertController.addAction(action)
+        // Check if the source type is available
+        guard UIImagePickerController.isSourceTypeAvailable(sourceType) else {
+            print("Source type \(sourceType) is not available")
+            completion(nil)
+            return
         }
         
-        if let action = self.action(for: .photoLibrary, title: "Photo library") {
-            alertController.addAction(action)
+        // For camera source, check and request camera permissions
+        if sourceType == .camera {
+            checkCameraPermissions { [weak self] granted in
+                guard let self = self, granted else {
+                    completion(nil)
+                    return
+                }
+                
+                self.presentImagePicker(sourceType: sourceType)
+            }
+        } 
+        // For photo library, check and request photo library permissions
+        else if sourceType == .photoLibrary {
+            checkPhotoLibraryPermissions { [weak self] granted in
+                guard let self = self, granted else {
+                    completion(nil)
+                    return
+                }
+                
+                self.presentImagePicker(sourceType: sourceType)
+            }
+        } 
+        // For other sources, just present the picker
+        else {
+            presentImagePicker(sourceType: sourceType)
         }
-        
-        alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
-        
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            alertController.popoverPresentationController?.sourceView = viewController.view
-            alertController.popoverPresentationController?.sourceRect = CGRect(x: viewController.view.bounds.midX, y: viewController.view.bounds.midY, width: 0, height: 0)
-            alertController.popoverPresentationController?.permittedArrowDirections = []
-        }
-        
-        self.presentationController?.present(alertController, animated: true)
     }
     
-    private func action(for type: UIImagePickerController.SourceType, title: String) -> UIAlertAction? {
-        guard UIImagePickerController.isSourceTypeAvailable(type) else {
-            return nil
-        }
+    // Present the picker with the specified source type
+    private func presentImagePicker(sourceType: UIImagePickerController.SourceType) {
+        pickerController.sourceType = sourceType
+        presentationController?.present(pickerController, animated: true)
+    }
+    
+    // Check camera permissions and request if needed
+    private func checkCameraPermissions(completion: @escaping (Bool) -> Void) {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
         
-        return UIAlertAction(title: title, style: .default) { [unowned self] _ in
-            self.pickerController.sourceType = type
-            self.presentationController?.present(self.pickerController, animated: true)
+        switch status {
+        case .authorized:
+            completion(true)
+            
+        case .notDetermined:
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                DispatchQueue.main.async {
+                    completion(granted)
+                }
+            }
+            
+        default:
+            showPermissionAlert(for: "Camera")
+            completion(false)
         }
     }
     
-    private func pickerController(_ controller: UIImagePickerController, didSelect image: UIImage) {
-        controller.dismiss(animated: true, completion: nil)
+    // Check photo library permissions and request if needed
+    private func checkPhotoLibraryPermissions(completion: @escaping (Bool) -> Void) {
+        let status = PHPhotoLibrary.authorizationStatus()
         
-        delegate?.imagePicker(self, didSelectImage: image)
+        switch status {
+        case .authorized:
+            completion(true)
+            
+        case .notDetermined:
+            PHPhotoLibrary.requestAuthorization { status in
+                DispatchQueue.main.async {
+                    completion(status == .authorized)
+                }
+            }
+            
+        default:
+            showPermissionAlert(for: "Photo Library")
+            completion(false)
+        }
+    }
+    
+    // Show an alert when permissions are denied
+    private func showPermissionAlert(for resource: String) {
+        let alert = UIAlertController(
+            title: "\(resource) Access Required",
+            message: "Please enable access to your \(resource.lowercased()) in Settings to use this feature.",
+            preferredStyle: .alert
+        )
+        
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: "Settings", style: .default) { _ in
+            if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(settingsURL)
+            }
+        })
+        
+        presentationController?.present(alert, animated: true)
     }
 }
 
+// MARK: - UIImagePickerControllerDelegate & UINavigationControllerDelegate
 extension ImagePicker: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
     
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true, completion: nil)
+    // Called when user has picked an image
+    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
+        // Dismiss the picker
+        picker.dismiss(animated: true)
+        
+        // Extract the edited image if available, otherwise use the original image
+        let image = info[.editedImage] as? UIImage ?? info[.originalImage] as? UIImage
+        
+        // Call the completion handler with the selected image
+        completion?(image)
     }
     
-    func imagePickerController(_ picker: UIImagePickerController,
-                               didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-        guard let image = info[.editedImage] as? UIImage ?? info[.originalImage] as? UIImage else {
-            return self.pickerController(picker, didSelect: UIImage())
-        }
+    // Called when user has cancelled the picker
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        // Dismiss the picker
+        picker.dismiss(animated: true)
         
-        self.pickerController(picker, didSelect: image)
+        // Call the completion handler with nil to indicate cancellation
+        completion?(nil)
     }
 }

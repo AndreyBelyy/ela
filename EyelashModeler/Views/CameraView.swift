@@ -1,213 +1,395 @@
 import UIKit
 import AVFoundation
 
-protocol CameraViewDelegate: AnyObject {
-    func cameraView(_ view: CameraView, didCaptureImage image: UIImage)
-    func cameraView(_ view: CameraView, didSelectImage image: UIImage)
-}
-
-class CameraView: UIViewController {
+class CameraView: UIView {
     
-    weak var delegate: CameraViewDelegate?
+    // Callback for when image is captured
+    var onImageCaptured: ((UIImage) -> Void)?
     
-    // Camera session properties
+    // Camera capture session
     private var captureSession: AVCaptureSession?
-    private var stillImageOutput: AVCapturePhotoOutput?
     private var videoPreviewLayer: AVCaptureVideoPreviewLayer?
+    private let photoOutput = AVCapturePhotoOutput()
     
-    // Image picker for selecting photos from library
-    private let imagePicker = ImagePicker()
-    
-    // UI components
-    private let cameraPreviewView = UIView()
-    private let takePictureButton = UIButton()
-    private let selectPhotoButton = UIButton()
+    // UI elements
+    private let captureButton = UIButton()
     private let switchCameraButton = UIButton()
+    private let flashButton = UIButton()
+    private let galleryButton = UIButton()
     
-    // Flags
-    private var isFrontCameraActive = false
+    // Camera position
+    private var currentCameraPosition: AVCaptureDevice.Position = .back
     
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        
-        setupUI()
-        setupCamera()
-        setupImagePicker()
+    // Flash mode
+    private var currentFlashMode: AVCaptureDevice.FlashMode = .auto
+    
+    // Camera setup state
+    private var isCameraSetup = false
+    
+    // MARK: - Initialization
+    
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupView()
     }
     
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupView()
+    }
+    
+    override func layoutSubviews() {
+        super.layoutSubviews()
         
-        // Start the camera when the view appears
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.captureSession?.startRunning()
+        // Update video preview layer frame when view layout changes
+        videoPreviewLayer?.frame = self.layer.bounds
+        
+        // If camera is not set up yet, try to set it up now
+        // This ensures the view has a valid size before setting up camera
+        if !isCameraSetup {
+            setupCamera()
         }
     }
     
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
+    // MARK: - View Setup
+    
+    private func setupView() {
+        backgroundColor = .black
         
-        // Stop the camera when the view disappears
-        captureSession?.stopRunning()
+        // Add UI elements
+        setupCaptureButton()
+        setupSwitchCameraButton()
+        setupFlashButton()
+        setupGalleryButton()
     }
     
-    private func setupUI() {
-        view.backgroundColor = .black
+    private func setupCaptureButton() {
+        captureButton.translatesAutoresizingMaskIntoConstraints = false
+        captureButton.backgroundColor = .white
+        captureButton.layer.cornerRadius = 35
+        captureButton.layer.borderWidth = 5
+        captureButton.layer.borderColor = UIColor.lightGray.cgColor
+        captureButton.addTarget(self, action: #selector(capturePhoto), for: .touchUpInside)
         
-        // Camera preview view
-        cameraPreviewView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(cameraPreviewView)
+        addSubview(captureButton)
         
-        // Take picture button
-        takePictureButton.translatesAutoresizingMaskIntoConstraints = false
-        takePictureButton.setTitle("Take Photo", for: .normal)
-        takePictureButton.setTitleColor(.white, for: .normal)
-        takePictureButton.backgroundColor = .systemBlue
-        takePictureButton.layer.cornerRadius = 25
-        takePictureButton.addTarget(self, action: #selector(takePicture), for: .touchUpInside)
-        view.addSubview(takePictureButton)
-        
-        // Select photo button
-        selectPhotoButton.translatesAutoresizingMaskIntoConstraints = false
-        selectPhotoButton.setTitle("Select Photo", for: .normal)
-        selectPhotoButton.setTitleColor(.white, for: .normal)
-        selectPhotoButton.backgroundColor = .systemGreen
-        selectPhotoButton.layer.cornerRadius = 25
-        selectPhotoButton.addTarget(self, action: #selector(selectPhoto), for: .touchUpInside)
-        view.addSubview(selectPhotoButton)
-        
-        // Switch camera button
-        switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
-        switchCameraButton.setTitle("Switch", for: .normal)
-        switchCameraButton.setTitleColor(.white, for: .normal)
-        switchCameraButton.backgroundColor = .systemGray
-        switchCameraButton.layer.cornerRadius = 20
-        switchCameraButton.addTarget(self, action: #selector(switchCamera), for: .touchUpInside)
-        view.addSubview(switchCameraButton)
-        
-        // Layout constraints
         NSLayoutConstraint.activate([
-            cameraPreviewView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            cameraPreviewView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            cameraPreviewView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            cameraPreviewView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -100),
-            
-            takePictureButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            takePictureButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            takePictureButton.widthAnchor.constraint(equalToConstant: 150),
-            takePictureButton.heightAnchor.constraint(equalToConstant: 50),
-            
-            selectPhotoButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            selectPhotoButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            selectPhotoButton.widthAnchor.constraint(equalToConstant: 120),
-            selectPhotoButton.heightAnchor.constraint(equalToConstant: 50),
-            
-            switchCameraButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            switchCameraButton.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -20),
-            switchCameraButton.widthAnchor.constraint(equalToConstant: 80),
-            switchCameraButton.heightAnchor.constraint(equalToConstant: 50)
+            captureButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+            captureButton.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -30),
+            captureButton.widthAnchor.constraint(equalToConstant: 70),
+            captureButton.heightAnchor.constraint(equalToConstant: 70)
         ])
     }
     
+    private func setupSwitchCameraButton() {
+        switchCameraButton.translatesAutoresizingMaskIntoConstraints = false
+        switchCameraButton.setImage(UIImage(systemName: "camera.rotate"), for: .normal)
+        switchCameraButton.tintColor = .white
+        switchCameraButton.contentVerticalAlignment = .fill
+        switchCameraButton.contentHorizontalAlignment = .fill
+        switchCameraButton.addTarget(self, action: #selector(switchCamera), for: .touchUpInside)
+        
+        addSubview(switchCameraButton)
+        
+        NSLayoutConstraint.activate([
+            switchCameraButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -20),
+            switchCameraButton.topAnchor.constraint(equalTo: topAnchor, constant: 20),
+            switchCameraButton.widthAnchor.constraint(equalToConstant: 30),
+            switchCameraButton.heightAnchor.constraint(equalToConstant: 30)
+        ])
+    }
+    
+    private func setupFlashButton() {
+        flashButton.translatesAutoresizingMaskIntoConstraints = false
+        updateFlashButtonIcon()
+        flashButton.tintColor = .white
+        flashButton.contentVerticalAlignment = .fill
+        flashButton.contentHorizontalAlignment = .fill
+        flashButton.addTarget(self, action: #selector(toggleFlash), for: .touchUpInside)
+        
+        addSubview(flashButton)
+        
+        NSLayoutConstraint.activate([
+            flashButton.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 20),
+            flashButton.topAnchor.constraint(equalTo: topAnchor, constant: 20),
+            flashButton.widthAnchor.constraint(equalToConstant: 30),
+            flashButton.heightAnchor.constraint(equalToConstant: 30)
+        ])
+    }
+    
+    private func setupGalleryButton() {
+        galleryButton.translatesAutoresizingMaskIntoConstraints = false
+        galleryButton.setImage(UIImage(systemName: "photo.on.rectangle"), for: .normal)
+        galleryButton.tintColor = .white
+        galleryButton.contentVerticalAlignment = .fill
+        galleryButton.contentHorizontalAlignment = .fill
+        galleryButton.addTarget(self, action: #selector(openGallery), for: .touchUpInside)
+        
+        addSubview(galleryButton)
+        
+        NSLayoutConstraint.activate([
+            galleryButton.leadingAnchor.constraint(equalTo: captureButton.trailingAnchor, constant: 30),
+            galleryButton.centerYAnchor.constraint(equalTo: captureButton.centerYAnchor),
+            galleryButton.widthAnchor.constraint(equalToConstant: 30),
+            galleryButton.heightAnchor.constraint(equalToConstant: 30)
+        ])
+    }
+    
+    // MARK: - Camera Setup
+    
     private func setupCamera() {
-        // Initialize the capture session
-        captureSession = AVCaptureSession()
-        captureSession?.sessionPreset = .photo
+        // Check if we have camera access
+        let cameraAuthStatus = AVCaptureDevice.authorizationStatus(for: .video)
         
-        // Get the back camera
-        guard let backCamera = AVCaptureDevice.default(for: .video) else {
-            print("Unable to access back camera")
-            return
-        }
-        
-        do {
-            // Create input from the camera
-            let input = try AVCaptureDeviceInput(device: backCamera)
+        switch cameraAuthStatus {
+        case .authorized:
+            configureCaptureSession()
             
-            // Add input to the session
-            if captureSession?.canAddInput(input) == true {
-                captureSession?.addInput(input)
-            }
-            
-            // Configure photo output
-            stillImageOutput = AVCapturePhotoOutput()
-            
-            if captureSession?.canAddOutput(stillImageOutput!) == true {
-                captureSession?.addOutput(stillImageOutput!)
+        case .notDetermined:
+            // Request permission
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                guard granted else { return }
                 
-                // Set up the preview layer
-                videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession!)
-                videoPreviewLayer?.videoGravity = .resizeAspectFill
-                videoPreviewLayer?.connection?.videoOrientation = .portrait
-                videoPreviewLayer?.frame = cameraPreviewView.bounds
-                
-                if let previewLayer = videoPreviewLayer {
-                    cameraPreviewView.layer.addSublayer(previewLayer)
-                }
-                
-                // Start the session
-                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                    self?.captureSession?.startRunning()
+                DispatchQueue.main.async {
+                    self?.configureCaptureSession()
                 }
             }
-        } catch {
-            print("Error setting up camera: \(error.localizedDescription)")
+            
+        default:
+            // Not authorized, show a message
+            showCameraAccessNeeded()
         }
     }
     
-    private func setupImagePicker() {
-        imagePicker.delegate = self
+    private func configureCaptureSession() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            
+            let captureSession = AVCaptureSession()
+            captureSession.sessionPreset = .high
+            
+            // Get camera device
+            guard let camera = self.getCameraDevice(for: self.currentCameraPosition) else {
+                DispatchQueue.main.async {
+                    self.showCameraError()
+                }
+                return
+            }
+            
+            // Add camera input to session
+            do {
+                let cameraInput = try AVCaptureDeviceInput(device: camera)
+                
+                if captureSession.canAddInput(cameraInput) {
+                    captureSession.addInput(cameraInput)
+                } else {
+                    DispatchQueue.main.async {
+                        self.showCameraError()
+                    }
+                    return
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.showCameraError()
+                }
+                return
+            }
+            
+            // Add photo output to session
+            if captureSession.canAddOutput(self.photoOutput) {
+                captureSession.addOutput(self.photoOutput)
+                
+                // Configure photo output
+                self.photoOutput.isHighResolutionCaptureEnabled = true
+                if self.photoOutput.isPortraitEffectsMatteDeliverySupported {
+                    self.photoOutput.isPortraitEffectsMatteDeliveryEnabled = true
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.showCameraError()
+                }
+                return
+            }
+            
+            DispatchQueue.main.async {
+                // Create video preview layer
+                let videoPreviewLayer = AVCaptureVideoPreviewLayer(session: captureSession)
+                videoPreviewLayer.videoGravity = .resizeAspectFill
+                videoPreviewLayer.frame = self.layer.bounds
+                self.layer.insertSublayer(videoPreviewLayer, at: 0)
+                
+                // Store session and layer
+                self.captureSession = captureSession
+                self.videoPreviewLayer = videoPreviewLayer
+                
+                // Start capture session
+                captureSession.startRunning()
+                self.isCameraSetup = true
+            }
+        }
     }
     
-    @objc private func takePicture() {
-        // Configure the photo settings
+    private func getCameraDevice(for position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+        if let device = AVCaptureDevice.default(.builtInDualCamera, for: .video, position: position) {
+            return device
+        } else if let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) {
+            return device
+        } else {
+            return nil
+        }
+    }
+    
+    // MARK: - Button Actions
+    
+    @objc private func capturePhoto() {
         let settings = AVCapturePhotoSettings()
+        settings.flashMode = currentFlashMode
         
-        // Capture the photo
-        stillImageOutput?.capturePhoto(with: settings, delegate: self)
-    }
-    
-    @objc private func selectPhoto() {
-        // Present the image picker
-        imagePicker.present(from: self)
+        photoOutput.capturePhoto(with: settings, delegate: self)
     }
     
     @objc private func switchCamera() {
-        // Remove existing inputs
-        captureSession?.beginConfiguration()
+        // Update camera position
+        currentCameraPosition = (currentCameraPosition == .back) ? .front : .back
         
-        if let inputs = captureSession?.inputs as? [AVCaptureDeviceInput] {
+        // Stop current session
+        captureSession?.stopRunning()
+        
+        // Remove previous inputs
+        if let inputs = captureSession?.inputs {
             for input in inputs {
                 captureSession?.removeInput(input)
             }
         }
         
-        // Get the new camera (front or back)
-        let position: AVCaptureDevice.Position = isFrontCameraActive ? .back : .front
-        guard let camera = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position) else {
-            print("Unable to access camera")
-            return
+        // Reconfigure with new camera
+        configureCaptureSession()
+    }
+    
+    @objc private func toggleFlash() {
+        switch currentFlashMode {
+        case .auto:
+            currentFlashMode = .on
+        case .on:
+            currentFlashMode = .off
+        case .off:
+            currentFlashMode = .auto
+        @unknown default:
+            currentFlashMode = .auto
         }
         
-        do {
-            // Create and add the new input
-            let input = try AVCaptureDeviceInput(device: camera)
-            if captureSession?.canAddInput(input) == true {
-                captureSession?.addInput(input)
-            }
-            
-            // Toggle the flag
-            isFrontCameraActive.toggle()
-            
-            // Update the video orientation
-            if let connection = videoPreviewLayer?.connection {
-                connection.videoOrientation = .portrait
-            }
-            
-            captureSession?.commitConfiguration()
-        } catch {
-            print("Error switching camera: \(error.localizedDescription)")
+        updateFlashButtonIcon()
+    }
+    
+    private func updateFlashButtonIcon() {
+        let iconName: String
+        
+        switch currentFlashMode {
+        case .auto:
+            iconName = "bolt.badge.a"
+        case .on:
+            iconName = "bolt"
+        case .off:
+            iconName = "bolt.slash"
+        @unknown default:
+            iconName = "bolt.badge.a"
         }
+        
+        flashButton.setImage(UIImage(systemName: iconName), for: .normal)
+    }
+    
+    @objc private func openGallery() {
+        // Notify parent to open photo gallery
+        let imagePicker = ImagePicker()
+        
+        // Find view controller
+        if let viewController = getParentViewController() {
+            imagePicker.present(from: viewController, sourceType: .photoLibrary) { [weak self] image in
+                if let image = image {
+                    self?.onImageCaptured?(image)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func showCameraError() {
+        let errorLabel = UILabel()
+        errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        errorLabel.text = "Camera not available"
+        errorLabel.textColor = .white
+        errorLabel.textAlignment = .center
+        
+        addSubview(errorLabel)
+        
+        NSLayoutConstraint.activate([
+            errorLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            errorLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+            errorLabel.widthAnchor.constraint(equalTo: widthAnchor, constant: -40)
+        ])
+    }
+    
+    private func showCameraAccessNeeded() {
+        let accessLabel = UILabel()
+        accessLabel.translatesAutoresizingMaskIntoConstraints = false
+        accessLabel.text = "Camera access required. Please enable in Settings."
+        accessLabel.textColor = .white
+        accessLabel.textAlignment = .center
+        accessLabel.numberOfLines = 0
+        
+        let settingsButton = UIButton(type: .system)
+        settingsButton.translatesAutoresizingMaskIntoConstraints = false
+        settingsButton.setTitle("Open Settings", for: .normal)
+        settingsButton.tintColor = .white
+        settingsButton.backgroundColor = .systemBlue
+        settingsButton.layer.cornerRadius = 8
+        settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
+        
+        addSubview(accessLabel)
+        addSubview(settingsButton)
+        
+        NSLayoutConstraint.activate([
+            accessLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+            accessLabel.centerYAnchor.constraint(equalTo: centerYAnchor, constant: -40),
+            accessLabel.widthAnchor.constraint(equalTo: widthAnchor, constant: -40),
+            
+            settingsButton.centerXAnchor.constraint(equalTo: centerXAnchor),
+            settingsButton.topAnchor.constraint(equalTo: accessLabel.bottomAnchor, constant: 20),
+            settingsButton.widthAnchor.constraint(equalToConstant: 150),
+            settingsButton.heightAnchor.constraint(equalToConstant: 44)
+        ])
+    }
+    
+    @objc private func openSettings() {
+        if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(settingsURL)
+        }
+    }
+    
+    // Helper method to find parent view controller
+    private func getParentViewController() -> UIViewController? {
+        var responder: UIResponder? = self
+        while responder != nil {
+            responder = responder?.next
+            if let viewController = responder as? UIViewController {
+                return viewController
+            }
+        }
+        return nil
+    }
+    
+    // Clean up when view is removed
+    override func removeFromSuperview() {
+        super.removeFromSuperview()
+        
+        // Stop capture session
+        captureSession?.stopRunning()
+        captureSession = nil
+        
+        // Remove video preview layer
+        videoPreviewLayer?.removeFromSuperlayer()
+        videoPreviewLayer = nil
     }
 }
 
@@ -215,26 +397,17 @@ class CameraView: UIViewController {
 extension CameraView: AVCapturePhotoCaptureDelegate {
     func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         if let error = error {
-            print("Error capturing photo: \(error.localizedDescription)")
+            print("Error capturing photo: \(error)")
             return
         }
         
-        // Get the image data and create a UIImage
+        // Get the image data and create UIImage
         guard let imageData = photo.fileDataRepresentation(),
               let image = UIImage(data: imageData) else {
-            print("Unable to create image from photo data")
             return
         }
         
-        // Notify the delegate
-        delegate?.cameraView(self, didCaptureImage: image)
-    }
-}
-
-// MARK: - ImagePickerDelegate
-extension CameraView: ImagePickerDelegate {
-    func imagePicker(_ picker: ImagePicker, didSelectImage image: UIImage) {
-        // Notify the delegate
-        delegate?.cameraView(self, didSelectImage: image)
+        // Call the callback with the captured image
+        onImageCaptured?(image)
     }
 }
