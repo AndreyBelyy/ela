@@ -1,0 +1,37 @@
+modules = ["swift"]
+
+[nix]
+channel = "stable-24_05"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Swift Info"
+
+[[workflows.workflow]]
+name = "Swift Info"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = """
+echo \"iOS Eyelash Modeling Application (Swift)\" && echo -e \"
+Project Structure:\" && find EyelashModeler -type f | sort && echo -e \"
+Note: This is an iOS application that requires Xcode and a macOS environment to run. The Swift files are present but cannot be compiled and run directly in this environment.\""""
+waitForPort = 5000
+
+[deployment]
+run = ["sh", "-c", 'echo "iOS Eyelash Modeling Application (Swift)" && echo -e "\nProject Structure:" && find EyelashModeler -type f | sort && echo -e "\nNote: This is an iOS application that requires Xcode and a macOS environment to run. The Swift files are present but cannot be compiled and run directly in this environment."']
