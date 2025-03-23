@@ -69,6 +69,9 @@ class EditorView: UIViewController {
         // Set up sliders
         setupSliders()
         
+        // Add slider stack to the view hierarchy - THIS WAS MISSING!
+        view.addSubview(sliderStack)
+        
         // Layout constraints
         NSLayoutConstraint.activate([
             titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),

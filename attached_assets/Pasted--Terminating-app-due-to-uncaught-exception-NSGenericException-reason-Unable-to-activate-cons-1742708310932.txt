@@ -1,0 +1,46 @@
+*** Terminating app due to uncaught exception 'NSGenericException', reason: 'Unable to activate constraint with anchors <NSLayoutYAxisAnchor:0x60000177ee80 "UIStackView:0x10351d5d0.top"> and <NSLayoutYAxisAnchor:0x60000177ef80 "UIImageView:0x10351cd90.bottom"> because they have no common ancestor.  Does the constraint or its anchors reference items in different view hierarchies?  That's illegal.'
+*** First throw call stack:
+(
+	0   CoreFoundation                      0x00000001804b757c __exceptionPreprocess + 172
+	1   libobjc.A.dylib                     0x000000018008eda8 objc_exception_throw + 72
+	2   CoreAutoLayout                      0x00000001db9263e8 -[NSLayoutConstraint setActive:] + 0
+	3   CoreAutoLayout                      0x00000001db92661c __55+[NSLayoutConstraint _addOrRemoveConstraints:activate:]_block_invoke + 36
+	4   CoreAutoLayout                      0x00000001db90f668 -[NSISEngine withBehaviors:performModifications:] + 76
+	5   CoreAutoLayout                      0x00000001db92650c +[NSLayoutConstraint _addOrRemoveConstraints:activate:] + 264
+	6   EyelashModeler.debug.dylib          0x0000000102c2e718 $s14EyelashModeler10EditorViewC7setupUI33_CEEF9A43DF1498DA9388BBEC7CE712FFLLyyF + 4328
+	7   EyelashModeler.debug.dylib          0x0000000102c2d5c4 $s14EyelashModeler10EditorViewC11viewDidLoadyyF + 84
+	8   EyelashModeler.debug.dylib          0x0000000102c2d618 $s14EyelashModeler10EditorViewC11viewDidLoadyyFTo + 36
+	9   UIKitCore                           0x0000000185362a9c -[UIViewController _sendViewDidLoadWithAppearanceProxyObjectTaggingEnabled] + 80
+	10  UIKitCore                           0x0000000185367654 -[UIViewController loadViewIfRequired] + 908
+	11  UIKitCore                           0x00000001853678fc -[UIViewController view] + 20
+	12  EyelashModeler.debug.dylib          0x0000000102c288f0 $s14EyelashModeler14ViewControllerC011setupEditorC033_2A559F31B281FFE418ED53C9CBEC60A0LLyyF + 352
+	13  EyelashModeler.debug.dylib          0x0000000102c2718c $s14EyelashModeler14ViewControllerC11viewDidLoadyyF + 116
+	14  EyelashModeler.debug.dylib          0x0000000102c271f4 $s14EyelashModeler14ViewControllerC11viewDidLoadyyFTo + 36
+	15  UIKitCore                           0x0000000185362a9c -[UIViewController _sendViewDidLoadWithAppearanceProxyObjectTaggingEnabled] + 80
+	16  UIKitCore                           0x0000000185367654 -[UIViewController loadViewIfRequired] + 908
+	17  UIKitCore                           0x00000001852ccf08 -[UINavigationController _ensureToViewControllersViewIsLoaded:] + 84
+	18  UIKitCore                           0x00000001852cd344 -[UINavigationController transitionConductor:willTransitionFromViewController:toViewController:] + 184
+	19  UIKitCore                           0x0000000185c6d704 -[_UIViewControllerTransitionConductor startDeferredTransitionIfNeeded] + 452
+	20  UIKitCore                           0x00000001852c4568 -[UINavigationController __viewWillLayoutSubviews] + 80
+	21  UIKitCore                           0x00000001852abe20 -[UILayoutContainerView layoutSubviews] + 168
+	22  UIKitCore                           0x0000000186044bd8 -[UIView(CALayerDelegate) layoutSublayersOfLayer:] + 2404
+	23  QuartzCore                          0x000000018b0bcfe4 _ZN2CA5Layer16layout_if_neededEPNS_11TransactionE + 432
+	24  QuartzCore                          0x000000018b0c7d68 _ZN2CA5Layer28layout_and_display_if_neededEPNS_11TransactionE + 124
+	25  QuartzCore                          0x000000018affca50 _ZN2CA7Context18commit_transactionEPNS_11TransactionEdPd + 464
+	26  QuartzCore                          0x000000018b02b260 _ZN2CA11Transaction6commitEv + 652
+	27  UIKitCore                           0x0000000185af0f70 __34-[UIApplication _firstCommitBlock]_block_invoke_2 + 32
+	28  CoreFoundation                      0x000000018041b58c __CFRUNLOOP_IS_CALLING_OUT_TO_A_BLOCK__ + 20
+	29  CoreFoundation                      0x000000018041acc4 __CFRunLoopDoBlocks + 352
+	30  CoreFoundation                      0x00000001804153cc __CFRunLoopRun + 812
+	31  CoreFoundation                      0x0000000180414c24 CFRunLoopRunSpecific + 552
+	32  GraphicsServices                    0x000000019020ab10 GSEventRunModal + 160
+	33  UIKitCore                           0x0000000185ad82fc -[UIApplication _run] + 796
+	34  UIKitCore                           0x0000000185adc4f4 UIApplicationMain + 124
+	35  UIKitCore                           0x0000000184ec36a8 block_destroy_helper.22 + 9660
+	36  EyelashModeler.debug.dylib          0x0000000102c2c320 $sSo21UIApplicationDelegateP5UIKitE4mainyyFZ + 120
+	37  EyelashModeler.debug.dylib          0x0000000102c2c298 $s14EyelashModeler11AppDelegateC5$mainyyFZ + 44
+	38  EyelashModeler.debug.dylib          0x0000000102c2c39c __debug_main_executable_dylib_entry_point + 28
+	39  dyld                                0x00000001027a1410 start_sim + 20
+	40  ???                                 0x000000010298a274 0x0 + 4338524788
+)
+libc++abi: terminating due to uncaught exception of type NSException
