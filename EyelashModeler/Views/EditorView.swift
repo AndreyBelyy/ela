@@ -191,23 +191,57 @@ class EditorView: UIViewController {
         }
     }
     
-    func setImage(_ image: UIImage, with eyelashModel: EyelashModel) {
-        self.editedImage = image
+    func setEyelashModel(_ eyelashModel: EyelashModel) {
         self.currentEyelashModel = eyelashModel
         
-        // Update the image view
-        imageView.image = image
+        // Set slider values based on the eyelash model properties
+        // Map from enum values to actual slider values
         
-        // Set slider values based on the eyelash model
-        thicknessSlider.value = Float(eyelashModel.thickness)
-        thicknessLabel.text = String(format: "%.2f", thicknessSlider.value)
+        // Set thickness slider based on thickness enum
+        var thicknessValue: Float = 0.15 // Default to medium
+        switch eyelashModel.thickness {
+        case .thin:
+            thicknessValue = 0.06
+        case .medium:
+            thicknessValue = 0.12
+        case .thick:
+            thicknessValue = 0.20
+        case .mixed:
+            thicknessValue = 0.15
+        }
+        thicknessSlider.value = thicknessValue
+        thicknessLabel.text = String(format: "%.2f", thicknessValue)
         
-        lengthSlider.value = Float(eyelashModel.length)
-        lengthLabel.text = String(format: "%.1f", lengthSlider.value)
+        // Set length slider based on length enum
+        var lengthValue: Float = 12.0 // Default to medium
+        switch eyelashModel.length {
+        case .short:
+            lengthValue = 8.0
+        case .medium:
+            lengthValue = 11.0
+        case .long:
+            lengthValue = 14.0
+        case .extraLong:
+            lengthValue = 16.0
+        case .mixed:
+            lengthValue = 12.0
+        }
+        lengthSlider.value = lengthValue
+        lengthLabel.text = String(format: "%.1f", lengthValue)
         
         // Density is not in the model, so we'll keep it at the default value
         densitySlider.value = 1.0
         densityLabel.text = "1.00"
+        
+        // Update UI with the model name
+        titleLabel.text = "Editing: \(eyelashModel.name)"
+    }
+    
+    func setImage(_ image: UIImage) {
+        self.editedImage = image
+        
+        // Update the image view
+        imageView.image = image
     }
     
     func getFinalImage() -> UIImage? {

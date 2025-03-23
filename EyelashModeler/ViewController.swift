@@ -95,44 +95,47 @@ class ViewController: UIViewController {
     }
     
     private func setupLibraryView() {
-        eyelashLibraryView = EyelashLibraryView(frame: getContentFrame())
-        eyelashLibraryView?.translatesAutoresizingMaskIntoConstraints = false
+        eyelashLibraryView = EyelashLibraryView()
         
         if let libraryView = eyelashLibraryView {
-            view.addSubview(libraryView)
-            libraryView.isHidden = true
+            // Add as a child view controller
+            addChild(libraryView)
+            view.addSubview(libraryView.view)
+            libraryView.view.frame = getContentFrame()
+            libraryView.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            libraryView.didMove(toParent: self)
+            libraryView.view.isHidden = true
             
-            // Set library view callbacks
-            libraryView.onEyelashSelected = { [weak self] eyelashModel in
-                self?.currentSelectedEyelash = eyelashModel
-                self?.showPreviewView()
-            }
+            // Set library view delegate
+            libraryView.delegate = self
         }
     }
     
     private func setupEditorView() {
-        editorView = EditorView(frame: getContentFrame())
-        editorView?.translatesAutoresizingMaskIntoConstraints = false
+        editorView = EditorView()
         
         if let editorView = editorView {
-            view.addSubview(editorView)
-            editorView.isHidden = true
-            
-            // Set editor view callbacks
-            editorView.onEditingComplete = { [weak self] eyelashModel in
-                self?.currentSelectedEyelash = eyelashModel
-                self?.showPreviewView()
-            }
+            // Add as a child view controller
+            addChild(editorView)
+            view.addSubview(editorView.view)
+            editorView.view.frame = getContentFrame()
+            editorView.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            editorView.didMove(toParent: self)
+            editorView.view.isHidden = true
         }
     }
     
     private func setupPreviewView() {
-        previewView = EyelashPreviewView(frame: getContentFrame())
-        previewView?.translatesAutoresizingMaskIntoConstraints = false
+        previewView = EyelashPreviewView()
         
         if let previewView = previewView {
-            view.addSubview(previewView)
-            previewView.isHidden = true
+            // Add as a child view controller
+            addChild(previewView)
+            view.addSubview(previewView.view)
+            previewView.view.frame = getContentFrame()
+            previewView.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            previewView.didMove(toParent: self)
+            previewView.view.isHidden = true
         }
     }
     
@@ -148,37 +151,37 @@ class ViewController: UIViewController {
     
     @objc private func showLibraryView() {
         hideAllViews()
-        eyelashLibraryView?.isHidden = false
+        eyelashLibraryView?.view.isHidden = false
         libraryButton.backgroundColor = .systemGreen
     }
     
     @objc private func showEditorView() {
         hideAllViews()
-        editorView?.isHidden = false
+        editorView?.view.isHidden = false
         editButton.backgroundColor = .systemGreen
         
         // Update the editor with the current eyelash model if available
-        if let eyelashModel = currentSelectedEyelash {
-            editorView?.setupWithEyelashModel(eyelashModel)
+        if let eyelashModel = currentSelectedEyelash, let editorView = editorView {
+            editorView.setEyelashModel(eyelashModel)
         }
     }
     
     @objc private func showPreviewView() {
         hideAllViews()
-        previewView?.isHidden = false
+        previewView?.view.isHidden = false
         previewButton.backgroundColor = .systemGreen
         
         // Update the preview with the current eyelash model and latest face data
-        if let eyelashModel = currentSelectedEyelash {
-            previewView?.setupWithEyelashModel(eyelashModel)
+        if let eyelashModel = currentSelectedEyelash, let previewView = previewView {
+            previewView.setEyelashModel(eyelashModel)
         }
     }
     
     private func hideAllViews() {
         cameraView?.isHidden = true
-        eyelashLibraryView?.isHidden = true
-        editorView?.isHidden = true
-        previewView?.isHidden = true
+        eyelashLibraryView?.view.isHidden = true
+        editorView?.view.isHidden = true
+        previewView?.view.isHidden = true
         
         // Reset button colors
         cameraButton.backgroundColor = .systemBlue
@@ -192,8 +195,11 @@ class ViewController: UIViewController {
             if let model = faceDetectionModel {
                 // Face detected, update the UI
                 DispatchQueue.main.async {
-                    self?.previewView?.updateWithFaceDetection(model, image: image)
-                    self?.showPreviewView()
+                    // We need to call our custom method that will be added to the preview controller
+                    if let previewView = self?.previewView as? EyelashPreviewView {
+                        previewView.updateWithFaceDetection(model: model, image: image)
+                        self?.showPreviewView()
+                    }
                 }
             } else {
                 // No face detected, show an alert
@@ -206,5 +212,13 @@ class ViewController: UIViewController {
                 }
             }
         }
+    }
+}
+
+// MARK: - EyelashLibraryViewDelegate
+extension ViewController: EyelashLibraryViewDelegate {
+    func libraryView(_ view: EyelashLibraryView, didSelectEyelash eyelashModel: EyelashModel) {
+        currentSelectedEyelash = eyelashModel
+        showPreviewView()
     }
 }

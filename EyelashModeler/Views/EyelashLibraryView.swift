@@ -87,60 +87,66 @@ class EyelashLibraryView: UIViewController {
             id: "natural",
             name: "Natural",
             description: "A natural-looking eyelash extension",
-            style: .natural,
-            thickness: 0.10,
-            curve: .jCurl,
-            length: 10
+            type: .classic,
+            length: .medium,
+            thickness: .thin,
+            curl: .jCurl,
+            customParameters: ["style": "natural"]
         )
         
         let volumeEyelash = EyelashModel(
             id: "volume",
             name: "Volume",
             description: "Full volume eyelash extension",
-            style: .volume,
-            thickness: 0.15,
-            curve: .dCurl,
-            length: 12
+            type: .volume,
+            length: .medium,
+            thickness: .medium,
+            curl: .dCurl,
+            customParameters: ["style": "volume"]
         )
         
         let dramaticEyelash = EyelashModel(
             id: "dramatic",
             name: "Dramatic",
             description: "Dramatic and bold eyelash extension",
-            style: .dramatic,
-            thickness: 0.20,
-            curve: .dCurl,
-            length: 14
+            type: .volume,
+            length: .long,
+            thickness: .thick,
+            curl: .dCurl,
+            customParameters: ["style": "dramatic"]
         )
         
         let catEyeEyelash = EyelashModel(
             id: "cat_eye",
             name: "Cat Eye",
             description: "Cat eye style with longer outer lashes",
-            style: .catEye,
-            thickness: 0.15,
-            curve: .cCurl,
-            length: 12
+            type: .classic,
+            length: .mixed,
+            thickness: .medium,
+            curl: .cCurl,
+            customParameters: ["patternType": "catEye"]
         )
         
         let dollyEyelash = EyelashModel(
             id: "dolly",
             name: "Dolly",
             description: "Doll-like round eyelash extension",
-            style: .dolly,
-            thickness: 0.15,
-            curve: .cCurl,
-            length: 11
+            type: .hybrid,
+            length: .mixed,
+            thickness: .medium,
+            curl: .cCurl,
+            customParameters: ["patternType": "dollEye"]
         )
         
         let squirrelEyelash = EyelashModel(
             id: "squirrel",
             name: "Squirrel",
             description: "Squirrel style with crossed lashes",
-            style: .squirrel,
-            thickness: 0.12,
-            curve: .cCurl,
-            length: 10
+            type: .hybrid,
+            length: .medium,
+            thickness: .thin,
+            curl: .cCurl,
+            customParameters: ["patternType": "squirrel"]
         )
         
         eyelashModels = [
@@ -276,20 +282,28 @@ class EyelashCell: UICollectionViewCell {
         descriptionLabel.text = model.description
         
         // In a real app, we would display an image of the eyelash style here
-        // For now, we'll just use a colored background to differentiate styles
-        switch model.style {
-        case .natural:
+        // For now, we'll just use a colored background to differentiate types
+        switch model.type {
+        case .classic:
             thumbnailView.backgroundColor = .systemBrown.withAlphaComponent(0.3)
         case .volume:
-            thumbnailView.backgroundColor = .systemBrown.withAlphaComponent(0.5)
-        case .dramatic:
-            thumbnailView.backgroundColor = .systemBrown.withAlphaComponent(0.7)
-        case .catEye:
-            thumbnailView.backgroundColor = .systemBlue.withAlphaComponent(0.3)
-        case .dolly:
-            thumbnailView.backgroundColor = .systemPink.withAlphaComponent(0.3)
-        case .squirrel:
-            thumbnailView.backgroundColor = .systemOrange.withAlphaComponent(0.3)
+            thumbnailView.backgroundColor = .systemBrown.withAlphaComponent(0.6)
+        case .hybrid:
+            thumbnailView.backgroundColor = .systemBrown.withAlphaComponent(0.4)
+        }
+        
+        // Add additional styling based on custom parameters if available
+        if let patternType = model.customParameters?["patternType"] as? String {
+            switch patternType {
+            case "catEye":
+                thumbnailView.backgroundColor = .systemBlue.withAlphaComponent(0.3)
+            case "dollEye":
+                thumbnailView.backgroundColor = .systemPink.withAlphaComponent(0.3)
+            case "squirrel":
+                thumbnailView.backgroundColor = .systemOrange.withAlphaComponent(0.3)
+            default:
+                break
+            }
         }
     }
 }

@@ -100,6 +100,39 @@ class EyelashPreviewView: UIViewController {
         
         // In a real app, we would update the AR face content with the new eyelash model
     }
+    
+    // Method to update the view with face detection results
+    func updateWithFaceDetection(model: FaceDetectionModel, image: UIImage) {
+        // Store the face detection model for use in AR face tracking
+        
+        // Create an image overlay with the detected face
+        let imageView = UIImageView(image: image)
+        imageView.contentMode = .scaleAspectFit
+        imageView.frame = sceneView.bounds
+        imageView.alpha = 0.3 // Semi-transparent overlay
+        
+        // Remove any existing image overlays
+        for subview in sceneView.subviews {
+            if subview is UIImageView {
+                subview.removeFromSuperview()
+            }
+        }
+        
+        // Add the new image overlay
+        sceneView.insertSubview(imageView, at: 0)
+        
+        // Update the instruction label
+        instructionLabel.text = "Face detected! Try different eyelash styles"
+        
+        // Apply current eyelash model if available
+        if let eyelashModel = currentEyelashModel {
+            // In a real app, we would update the AR face content with the eyelash model
+            // using the detected face points from the FaceDetectionModel
+            
+            // For now, we'll just update the label
+            instructionLabel.text = "Previewing \(eyelashModel.name) on detected face"
+        }
+    }
 }
 
 // MARK: - ARSCNViewDelegate
@@ -176,32 +209,56 @@ extension EyelashPreviewView: ARSCNViewDelegate {
         eyelashNode.name = "eyelash"
         
         // Apply transformations based on model properties
-        let length = CGFloat(model.length) / 100.0
-        let thickness = CGFloat(model.thickness) * 10
+        var lengthValue: Float = 0.0
+        switch model.length {
+        case .short: lengthValue = 0.8
+        case .medium: lengthValue = 1.0
+        case .long: lengthValue = 1.2
+        case .extraLong: lengthValue = 1.4
+        case .mixed: lengthValue = 1.1
+        }
         
-        eyelashNode.scale = SCNVector3(1.0, thickness, 1.0)
+        var thicknessValue: Float = 0.0
+        switch model.thickness {
+        case .thin: thicknessValue = 0.8
+        case .medium: thicknessValue = 1.0
+        case .thick: thicknessValue = 1.2
+        case .mixed: thicknessValue = 1.0
+        }
         
-        // Adjust position based on style
-        switch model.style {
-        case .natural:
-            // Natural eyelashes are positioned normally
+        let length = CGFloat(lengthValue)
+        let thickness = CGFloat(thicknessValue)
+        
+        eyelashNode.scale = SCNVector3(length, thickness, 1.0)
+        
+        // Adjust position based on type
+        switch model.type {
+        case .classic:
+            // Classic eyelashes are positioned normally
             break
         case .volume:
             // Volume eyelashes are slightly thicker
             eyelashNode.scale.y *= 1.3
-        case .dramatic:
-            // Dramatic eyelashes are thicker and longer
-            eyelashNode.scale.y *= 1.5
-            eyelashNode.scale.x *= 1.2
-        case .catEye:
-            // Cat eye has longer outer lashes
-            eyelashNode.eulerAngles.z = isLeft ? -0.2 : 0.2
-        case .dolly:
-            // Dolly lashes are even in the middle
-            eyelashNode.eulerAngles.z = isLeft ? 0.1 : -0.1
-        case .squirrel:
-            // Squirrel lashes have a criss-cross pattern
-            eyelashNode.eulerAngles.x = 0.1
+        case .hybrid:
+            // Hybrid lashes are a mix
+            eyelashNode.scale.y *= 1.2
+        }
+        
+        // Additional adjustments based on custom parameters if available
+        if let patternType = model.customParameters?["patternType"] as? String {
+            switch patternType {
+            case "catEye":
+                // Cat eye has longer outer lashes
+                eyelashNode.eulerAngles.z = isLeft ? -0.2 : 0.2
+            case "dollEye":
+                // Doll lashes are even in the middle
+                eyelashNode.eulerAngles.z = isLeft ? 0.1 : -0.1
+            case "squirrel":
+                // Squirrel lashes have a criss-cross pattern
+                eyelashNode.eulerAngles.x = 0.1
+            default:
+                break
+            }
         }
         
         return eyelashNode
