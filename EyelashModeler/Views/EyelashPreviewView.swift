@@ -31,16 +31,62 @@ class EyelashPreviewView: UIViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         
-        // Configure the AR session
+        // Check if device supports face tracking
+        guard ARFaceTrackingConfiguration.isSupported else {
+            showARNotSupportedMessage()
+            return
+        }
+        
+        // Configure AR session with appropriate options
         let configuration = ARFaceTrackingConfiguration()
-        sceneView.session.run(configuration)
+        
+        // Enable various tracking options if available
+        if #available(iOS 13.0, *) {
+            configuration.maximumNumberOfTrackedFaces = ARFaceTrackingConfiguration.supportedNumberOfTrackedFaces
+            print("Maximum tracked faces: \(configuration.maximumNumberOfTrackedFaces)")
+        }
+        
+        // Start AR session with the configuration
+        sceneView.session.run(configuration, options: [.resetTracking, .removeExistingAnchors])
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        // Handle caching limitation mentioned in error message
+        if let focusRect = sceneView.layer.bounds.insetBy(dx: 10, dy: 10) as CGRect? {
+            // Use the correct method name - focusItemsInRect is mentioned in the error message
+            sceneView.focusItemsInRect(focusRect)
+            print("Applied focus rect to ARSCNView")
+        }
     }
     
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         
-        // Pause the AR session
+        // Pause the AR session to conserve resources
         sceneView.session.pause()
+    }
+    
+    private func showARNotSupportedMessage() {
+        let messageLabel = UILabel()
+        messageLabel.translatesAutoresizingMaskIntoConstraints = false
+        messageLabel.text = "Face tracking is not supported on this device."
+        messageLabel.textAlignment = .center
+        messageLabel.textColor = .white
+        messageLabel.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+        messageLabel.layer.cornerRadius = 10
+        messageLabel.layer.masksToBounds = true
+        messageLabel.numberOfLines = 0
+        
+        view.addSubview(messageLabel)
+        
+        NSLayoutConstraint.activate([
+            messageLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            messageLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor),
+            messageLabel.widthAnchor.constraint(equalTo: view.widthAnchor, multiplier: 0.8),
+            messageLabel.heightAnchor.constraint(greaterThanOrEqualToConstant: 80)
+        ])
     }
     
     private func setupUI() {

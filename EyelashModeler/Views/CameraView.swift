@@ -197,8 +197,18 @@ class CameraView: UIView {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let self = self else { return }
             
+            // Create a new capture session
             let captureSession = AVCaptureSession()
-            captureSession.sessionPreset = .high
+            
+            // Begin configuration
+            captureSession.beginConfiguration()
+            
+            // Set session preset
+            if captureSession.canSetSessionPreset(.photo) {
+                captureSession.sessionPreset = .photo
+            } else {
+                captureSession.sessionPreset = .high
+            }
             
             // Get camera device
             guard let camera = self.getCameraDevice(for: self.currentCameraPosition) else {
@@ -221,6 +231,7 @@ class CameraView: UIView {
                     return
                 }
             } catch {
+                print("Error creating camera input: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self.showCameraError()
                 }
@@ -233,6 +244,22 @@ class CameraView: UIView {
                 
                 // Configure photo output
                 self.photoOutput.isHighResolutionCaptureEnabled = true
+                
+                // Check if video stabilization is available
+                if let connection = self.photoOutput.connection(with: .video) {
+                    if connection.isVideoStabilizationSupported {
+                        connection.preferredVideoStabilizationMode = .auto
+                    }
+                    
+                    // Verify connection is active
+                    if !connection.isActive {
+                        print("Warning: Video connection is not active")
+                    }
+                } else {
+                    print("Warning: Could not get video connection")
+                }
+                
+                // Enable portrait effects if available
                 if self.photoOutput.isPortraitEffectsMatteDeliverySupported {
                     self.photoOutput.isPortraitEffectsMatteDeliveryEnabled = true
                 }
@@ -242,6 +269,9 @@ class CameraView: UIView {
                 }
                 return
             }
+            
+            // Commit configuration
+            captureSession.commitConfiguration()
             
             DispatchQueue.main.async {
                 // Create video preview layer
@@ -254,9 +284,15 @@ class CameraView: UIView {
                 self.captureSession = captureSession
                 self.videoPreviewLayer = videoPreviewLayer
                 
-                // Start capture session
-                captureSession.startRunning()
-                self.isCameraSetup = true
+                // Start capture session on a background thread to prevent UI blocking
+                DispatchQueue.global(qos: .userInitiated).async {
+                    captureSession.startRunning()
+                    
+                    DispatchQueue.main.async {
+                        self.isCameraSetup = true
+                        print("Camera setup complete and running")
+                    }
+                }
             }
         }
     }
@@ -274,6 +310,62 @@ class CameraView: UIView {
     // MARK: - Button Actions
     
     @objc private func capturePhoto() {
+        // Make sure camera session is running
+        if captureSession?.isRunning != true {
+            // If not running, try to start it
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.captureSession?.startRunning()
+                
+                // Wait a moment for camera to initialize
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                    self?.takePicture()
+                }
+            }
+            return
+        }
+        
+        takePicture()
+    }
+    
+    private func takePicture() {
+        // Check for active video connection
+        guard let videoConnection = photoOutput.connection(with: .video), 
+              videoConnection.isEnabled, videoConnection.isActive else {
+            print("Error: No active video connection available")
+            
+            // Show error to user
+            let errorLabel = UILabel()
+            errorLabel.translatesAutoresizingMaskIntoConstraints = false
+            errorLabel.text = "Camera not ready. Please try again."
+            errorLabel.textColor = .white
+            errorLabel.textAlignment = .center
+            errorLabel.backgroundColor = UIColor.black.withAlphaComponent(0.7)
+            errorLabel.layer.cornerRadius = 8
+            errorLabel.layer.masksToBounds = true
+            errorLabel.alpha = 0
+            
+            addSubview(errorLabel)
+            
+            NSLayoutConstraint.activate([
+                errorLabel.centerXAnchor.constraint(equalTo: centerXAnchor),
+                errorLabel.centerYAnchor.constraint(equalTo: centerYAnchor),
+                errorLabel.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.8),
+                errorLabel.heightAnchor.constraint(equalToConstant: 40)
+            ])
+            
+            UIView.animate(withDuration: 0.3, animations: {
+                errorLabel.alpha = 1.0
+            }, completion: { _ in
+                UIView.animate(withDuration: 0.3, delay: 2.0, options: [], animations: {
+                    errorLabel.alpha = 0
+                }, completion: { _ in
+                    errorLabel.removeFromSuperview()
+                })
+            })
+            
+            return
+        }
+        
         let settings = AVCapturePhotoSettings()
         settings.flashMode = currentFlashMode
         
