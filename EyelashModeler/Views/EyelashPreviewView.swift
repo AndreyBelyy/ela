@@ -98,18 +98,25 @@ class EyelashPreviewView: UIViewController {
         // Update the instruction label
         instructionLabel.text = "Previewing \(model.name) eyelashes"
         
-        // In a real app, we would update the AR face content with the new eyelash model
+        // Apply the eyelash style to the current image if available
+        applyCurrentEyelashStyle()
     }
+    
+    // Store the current face detection model and original image
+    private var currentFaceModel: FaceDetectionModel?
+    private var originalImage: UIImage?
     
     // Method to update the view with face detection results
     func updateWithFaceDetection(model: FaceDetectionModel, image: UIImage) {
-        // Store the face detection model for use in AR face tracking
+        // Store the face detection model and image for later use
+        currentFaceModel = model
+        originalImage = image
         
         // Create an image overlay with the detected face
         let imageView = UIImageView(image: image)
         imageView.contentMode = .scaleAspectFit
         imageView.frame = sceneView.bounds
-        imageView.alpha = 0.3 // Semi-transparent overlay
+        imageView.tag = 100 // Tag for easy reference
         
         // Remove any existing image overlays
         for subview in sceneView.subviews {
@@ -122,15 +129,171 @@ class EyelashPreviewView: UIViewController {
         sceneView.insertSubview(imageView, at: 0)
         
         // Update the instruction label
-        instructionLabel.text = "Face detected! Try different eyelash styles"
+        instructionLabel.text = "Face detected! Select an eyelash style to preview"
         
         // Apply current eyelash model if available
+        applyCurrentEyelashStyle()
+        
+        // Add a save button
+        addSaveButton()
+    }
+    
+    private func applyCurrentEyelashStyle() {
+        guard let model = currentFaceModel, let image = originalImage else { return }
+        
         if let eyelashModel = currentEyelashModel {
-            // In a real app, we would update the AR face content with the eyelash model
-            // using the detected face points from the FaceDetectionModel
+            // In a real app, we would apply the eyelash style to the image
+            // For this demo, we'll simulate by creating visual indicators
             
-            // For now, we'll just update the label
-            instructionLabel.text = "Previewing \(eyelashModel.name) on detected face"
+            // Create overlay for eyelashes
+            let eyelashOverlay = UIView()
+            eyelashOverlay.tag = 200 // Tag for easy reference
+            eyelashOverlay.frame = sceneView.bounds
+            eyelashOverlay.isUserInteractionEnabled = false
+            
+            // Remove any existing eyelash overlays
+            for subview in sceneView.subviews {
+                if subview.tag == 200 {
+                    subview.removeFromSuperview()
+                }
+            }
+            
+            // Get eye positions from the face detection model
+            if let leftEye = model.leftEye, let rightEye = model.rightEye {
+                // Create visual representations for the eyelashes
+                let leftEyelashView = createEyelashIndicator(for: eyelashModel, at: leftEye.rect, isLeft: true)
+                let rightEyelashView = createEyelashIndicator(for: eyelashModel, at: rightEye.rect, isLeft: false)
+                
+                eyelashOverlay.addSubview(leftEyelashView)
+                eyelashOverlay.addSubview(rightEyelashView)
+                
+                // Add the overlay to the scene
+                sceneView.addSubview(eyelashOverlay)
+                
+                // Update label
+                instructionLabel.text = "Previewing \(eyelashModel.name) eyelashes - Tap to save"
+            }
+        }
+    }
+    
+    private func createEyelashIndicator(for model: EyelashModel, at eyeRect: CGRect, isLeft: Bool) -> UIView {
+        // This is a simplified visual representation - in a real app, we would use more sophisticated rendering
+        let indicatorView = UIView()
+        
+        // Scale the eye rect to match the image in the view
+        let scale = sceneView.bounds.width / (originalImage?.size.width ?? 1.0)
+        let scaledRect = CGRect(
+            x: eyeRect.origin.x * scale + sceneView.bounds.width/4, // Adjust for aspect fit
+            y: eyeRect.origin.y * scale + sceneView.bounds.height/4,
+            width: eyeRect.width * scale,
+            height: eyeRect.height * scale
+        )
+        
+        // Position slightly above the eye
+        indicatorView.frame = CGRect(
+            x: scaledRect.origin.x,
+            y: scaledRect.origin.y - scaledRect.height * 0.3,
+            width: scaledRect.width,
+            height: scaledRect.height * 0.5
+        )
+        
+        // Style based on eyelash model
+        indicatorView.backgroundColor = .clear
+        
+        // Create a visual indicator of eyelashes
+        let eyelashLayer = CAShapeLayer()
+        let path = UIBezierPath()
+        
+        // Number of lashes depends on thickness
+        var lashCount = 7
+        switch model.thickness {
+        case .thin: lashCount = 5
+        case .medium: lashCount = 7
+        case .thick: lashCount = 9
+        case .mixed: lashCount = 8
+        }
+        
+        // Length factor depends on length enum
+        var lengthFactor: CGFloat = 1.0
+        switch model.length {
+        case .short: lengthFactor = 0.7
+        case .medium: lengthFactor = 1.0
+        case .long: lengthFactor = 1.3
+        case .extraLong: lengthFactor = 1.5
+        case .mixed: lengthFactor = 1.2
+        }
+        
+        // Draw lashes
+        for i in 0..<lashCount {
+            let x = indicatorView.bounds.width * CGFloat(i) / CGFloat(lashCount - 1)
+            let startY = indicatorView.bounds.height
+            let endY = indicatorView.bounds.height - indicatorView.bounds.height * lengthFactor
+            
+            path.move(to: CGPoint(x: x, y: startY))
+            path.addLine(to: CGPoint(x: x, y: endY))
+        }
+        
+        eyelashLayer.path = path.cgPath
+        eyelashLayer.strokeColor = UIColor.black.cgColor
+        eyelashLayer.lineWidth = 1.5
+        
+        switch model.thickness {
+        case .thin: eyelashLayer.lineWidth = 1.0
+        case .medium: eyelashLayer.lineWidth = 1.5
+        case .thick: eyelashLayer.lineWidth = 2.0
+        case .mixed: eyelashLayer.lineWidth = 1.5
+        }
+        
+        indicatorView.layer.addSublayer(eyelashLayer)
+        
+        return indicatorView
+    }
+    
+    private func addSaveButton() {
+        // Check if save button already exists
+        if let existingButton = view.viewWithTag(300) {
+            return // Button already exists
+        }
+        
+        let saveButton = UIButton(type: .system)
+        saveButton.tag = 300
+        saveButton.setTitle("Save Image", for: .normal)
+        saveButton.backgroundColor = .systemBlue
+        saveButton.setTitleColor(.white, for: .normal)
+        saveButton.layer.cornerRadius = 8
+        saveButton.translatesAutoresizingMaskIntoConstraints = false
+        saveButton.addTarget(self, action: #selector(saveButtonTapped), for: .touchUpInside)
+        
+        view.addSubview(saveButton)
+        
+        NSLayoutConstraint.activate([
+            saveButton.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            saveButton.bottomAnchor.constraint(equalTo: instructionLabel.topAnchor, constant: -20),
+            saveButton.widthAnchor.constraint(equalToConstant: 120),
+            saveButton.heightAnchor.constraint(equalToConstant: 40)
+        ])
+    }
+    
+    @objc private func saveButtonTapped() {
+        // In a real app, we would create a composite image with the eyelashes rendered properly
+        // For this demo, we'll simulate saving by showing a success message
+        
+        // Flash effect to simulate capture
+        let flashView = UIView(frame: view.bounds)
+        flashView.backgroundColor = .white
+        flashView.alpha = 0.8
+        view.addSubview(flashView)
+        
+        UIView.animate(withDuration: 0.3, animations: {
+            flashView.alpha = 0
+        }) { _ in
+            flashView.removeFromSuperview()
+            
+            // Show success message
+            self.instructionLabel.text = "Image saved with \(self.currentEyelashModel?.name ?? "eyelash") style!"
+            
+            // In a real app, we would save to Photos
+            print("Saved image with eyelash style: \(self.currentEyelashModel?.name ?? "unknown")")
         }
     }
 }

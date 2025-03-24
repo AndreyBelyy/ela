@@ -86,6 +86,14 @@ class ViewController: UIViewController {
             view.addSubview(cameraView)
             cameraView.isHidden = true
             
+            // Add constraints to ensure camera view fills the content area
+            NSLayoutConstraint.activate([
+                cameraView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+                cameraView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+                cameraView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+                cameraView.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -80) // Leave space for buttons
+            ])
+            
             // Set camera view callbacks
             cameraView.onImageCaptured = { [weak self] image in
                 // Process the captured image for face detection

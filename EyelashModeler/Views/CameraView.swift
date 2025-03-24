@@ -46,8 +46,40 @@ class CameraView: UIView {
         
         // If camera is not set up yet, try to set it up now
         // This ensures the view has a valid size before setting up camera
-        if !isCameraSetup {
+        if !isCameraSetup && !bounds.isEmpty {
             setupCamera()
+        }
+    }
+    
+    // Called when the view becomes visible
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        
+        // If view is visible and camera isn't set up, set it up
+        if window != nil && !isCameraSetup && !bounds.isEmpty {
+            setupCamera()
+        }
+    }
+    
+    // Called when view becomes visible or hidden
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        
+        if superview != nil {
+            // View was added to a superview
+            if !isCameraSetup && !bounds.isEmpty {
+                setupCamera()
+            }
+            
+            // Start the camera if it's already set up but not running
+            if isCameraSetup && !(captureSession?.isRunning ?? false) {
+                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                    self?.captureSession?.startRunning()
+                }
+            }
+        } else {
+            // View was removed from superview
+            stopCamera()
         }
     }
     
@@ -379,12 +411,22 @@ class CameraView: UIView {
         return nil
     }
     
+    // Method to stop the camera
+    private func stopCamera() {
+        // Stop capture session
+        if captureSession?.isRunning ?? false {
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.captureSession?.stopRunning()
+            }
+        }
+    }
+    
     // Clean up when view is removed
     override func removeFromSuperview() {
         super.removeFromSuperview()
         
-        // Stop capture session
-        captureSession?.stopRunning()
+        // Stop and clean up camera resources
+        stopCamera()
         captureSession = nil
         
         // Remove video preview layer
